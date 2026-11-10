@@ -1,0 +1,132 @@
+name: weekly
+
+on:
+  schedule:
+    - cron: "47 6 * * 0"
+  workflow_dispatch:
+    inputs:
+      no_llm:
+        description: "Skip the Anthropic calls: the digest only lists the signals"
+        type: boolean
+        default: false
+
+concurrency:
+  group: radar-db
+  cancel-in-progress: false
+
+# This repo is public (free Actions minutes); the brief, digests and ledger live in the private data
+# repo DATA_REPO, read and written with the DATA_REPO_TOKEN secret. Public logs carry counts only: the
+# digest step's full output goes to the data repo (logs/), never to this log or an artifact.
+permissions:
+  contents: write
+
+jobs:
+  weekly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      STEAM_API_KEY: ${{ secrets.STEAM_API_KEY }}
+      TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
+      TWITCH_CLIENT_SECRET: ${{ secrets.TWITCH_CLIENT_SECRET }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      DATA_REPO: edemaster/steam-radar
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check out the private data repo
+        uses: actions/checkout@v4
+        with:
+          repository: edemaster/steam-radar
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: data
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+
+      - name: Download database
+        run: |
+          # Only a missing release may start fresh: a failed download must stop the job,
+          # or the upload below would replace the whole history with an empty database.
+          if gh release view db-latest >/dev/null 2>&1; then
+            gh release download db-latest -p radar.db.gz
+            gunzip -f radar.db.gz
+          else
+            echo "No db-latest release yet: starting fresh"
+          fi
+
+      - name: Detect
+        run: |
+          # One date for every step, so a run that crosses midnight UTC still finds its own files.
+          day=$(date -u +%F)
+          echo "DAY=$day" >> "$GITHUB_ENV"
+          python -m radar.detect --db radar.db --week "$day" --report --out out/
+
+      - name: Twitch snapshot
+        run: |
+          ids=$(python -m radar.digest appids --signals "out/signals_${DAY}.json")
+          if [ -z "$ids" ]; then echo "no signals, no Twitch snapshot"; exit 0; fi
+          python -m radar.twitch_snapshot --db radar.db --appids "$ids"
+
+      - name: Digest
+        id: digest
+        continue-on-error: true
+        run: |
+          flag=""
+          if [ "${{ inputs.no_llm }}" = "true" ]; then flag="--no-llm"; fi
+          mkdir -p data/logs
+          log="data/logs/digest_${DAY}.txt"
+          code=0
+          python -m radar.digest --db radar.db --signals "out/signals_${DAY}.json" --brief data/BRIEF.md \
+            --ledger data/ledger.jsonl --out data/digests/ $flag > "$log" 2>&1 || code=$?
+          grep '^digest:' "$log" || echo "digest: no summary line (exit $code), see logs/ in the data repo"
+          exit $code
+
+      - name: Pack and upload
+        if: always()
+        run: |
+          if [ ! -f radar.db ]; then echo "no radar.db, nothing to upload"; exit 0; fi
+          ok=$(python -c "import sqlite3;print(sqlite3.connect('radar.db').execute('PRAGMA integrity_check').fetchone()[0])")
+          if [ "$ok" != "ok" ]; then echo "integrity_check failed: $ok"; exit 1; fi
+          gzip -kf radar.db
+          gh release view db-latest >/dev/null 2>&1 || \
+            gh release create db-latest --prerelease --title db-latest --notes "rolling database"
+          gh release upload db-latest radar.db.gz --clobber
+
+      - name: Commit digest to the data repo and open an issue there
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+          GH_REPO: edemaster/steam-radar
+        working-directory: data
+        run: |
+          if [ -z "${DAY:-}" ] || [ ! -f "digests/${DAY}.md" ]; then echo "no digest written"; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          if [ -d digests ]; then git add digests/; fi
+          if [ -d logs ]; then git add logs/; fi
+          if [ -f ledger.jsonl ]; then git add ledger.jsonl; fi
+          if git diff --cached --quiet; then echo "nothing new to commit"; else
+            git commit -q -m "digest ${DAY:-unknown}"
+            git pull -q --rebase
+            git push -q
+          fi
+          if [ -n "${DAY:-}" ] && [ -f "digests/${DAY}.md" ]; then
+            gh issue create --title "Radar digest ${DAY}" --body-file "digests/${DAY}.md" > /dev/null
+            echo "issue opened in the data repo"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: signals
+          path: out/
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Fail the job if the digest failed
+        if: steps.digest.outcome == 'failure'
+        run: |
+          echo "the digest step failed (see its log and the banner in the digest)"
+          exit 1

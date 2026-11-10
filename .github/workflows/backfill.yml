@@ -1,0 +1,69 @@
+name: backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_minutes:
+        description: "Stop the backfill after this many minutes"
+        default: "300"
+
+concurrency:
+  group: radar-db
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      STEAM_API_KEY: ${{ secrets.STEAM_API_KEY }}
+      TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
+      TWITCH_CLIENT_SECRET: ${{ secrets.TWITCH_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+
+      - name: Download database
+        run: |
+          # Only a missing release may start fresh: a failed download must stop the job,
+          # or the upload below would replace the whole history with an empty database.
+          if gh release view db-latest >/dev/null 2>&1; then
+            gh release download db-latest -p radar.db.gz
+            gunzip -f radar.db.gz
+          else
+            echo "No db-latest release yet: starting fresh"
+          fi
+
+      - name: Backfill
+        timeout-minutes: 320
+        run: python -m radar.backfill --db radar.db --max-minutes ${{ inputs.max_minutes }}
+
+      - name: Detect
+        run: python -m radar.detect --db radar.db --report --out out/
+
+      - name: Pack and upload
+        if: always()
+        run: |
+          if [ ! -f radar.db ]; then echo "no radar.db, nothing to upload"; exit 0; fi
+          ok=$(python -c "import sqlite3;print(sqlite3.connect('radar.db').execute('PRAGMA integrity_check').fetchone()[0])")
+          if [ "$ok" != "ok" ]; then echo "integrity_check failed: $ok"; exit 1; fi
+          gzip -kf radar.db
+          gh release view db-latest >/dev/null 2>&1 || \
+            gh release create db-latest --prerelease --title db-latest --notes "rolling database"
+          gh release upload db-latest radar.db.gz --clobber
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: signals
+          path: out/
+          retention-days: 30
+          if-no-files-found: ignore

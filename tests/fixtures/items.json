@@ -1,0 +1,14 @@
+{"response": {"store_items": [
+ {"item_type": 0, "id": 100, "success": 1, "visible": true, "name": "Indie One", "type": 0,
+  "basic_info": {"short_description": "A game.", "publishers": [{"name": "Solo Dev"}], "developers": [{"name": "Solo Dev"}]},
+  "tags": [{"tagid": 19, "weight": 500}, {"tagid": 492, "weight": 300}],
+  "release": {"steam_release_date": 1793000000},
+  "best_purchase_option": {"packageid": 1, "final_price_in_cents": "999", "original_price_in_cents": "1999", "discount_pct": 50}},
+ {"item_type": 0, "id": 101, "success": 1, "visible": true, "name": "Soon", "type": 0, "is_coming_soon": true, "is_free": true,
+  "basic_info": {"publishers": [{"name": "Big Pub"}], "developers": [{"name": "Solo Dev"}]},
+  "tags": [], "release": {"is_coming_soon": true, "custom_release_date_message": "Coming soon"}},
+ {"item_type": 0, "id": 102, "success": 1, "visible": true, "name": "Indie One Demo", "type": 1, "is_free": true,
+  "basic_info": {"publishers": [{"name": "Solo Dev"}], "developers": [{"name": "Solo Dev"}]},
+  "tags": [], "release": {"steam_release_date": 1793000000}},
+ {"item_type": 0, "id": 103, "success": 15, "visible": false, "name": "", "appid": 0}
+]}}
