@@ -310,14 +310,14 @@ def shared_tags(corpus: Corpus, appids: list[int]) -> list[int]:
 
 
 def clone_pressure(con: sqlite3.Connection, sim: Sim, members: list[int]) -> dict[str, Any]:
-    """Coming-soon games with similarity >= SIM_MIN to any member: count and the top 10."""
+    """Coming-soon games with similarity >= CLONE_SIM_MIN to any member: count and the top 10."""
     found = []
     rows = con.execute("""SELECT appid, name, release_date FROM apps
                           WHERE coming_soon=1 AND type='game'
                             AND appid IN (SELECT appid FROM app_tags) ORDER BY appid""").fetchall()
     for r in rows:
         best = max((sim(r["appid"], m) for m in members if m != r["appid"]), default=0.0)
-        if best >= config.SIM_MIN:
+        if best >= config.CLONE_SIM_MIN:
             found.append({"appid": r["appid"], "name": r["name"], "sim": round(best, 4),
                           "release_date": r["release_date"]})
     found.sort(key=lambda x: (-x["sim"], x["appid"]))
@@ -450,7 +450,7 @@ def signal_doc(con: sqlite3.Connection, corpus: Corpus, week: date, s: dict[str,
             "release_date, price, developers, publishers, *_app_count": "apps",
             "unusual_pairs, shared_tags": "app_tags + tags (games with both / games with tags)",
             "review_sample": "review_samples (aggregates of the 100 newest reviews)",
-            "clone_pressure": "apps.coming_soon = 1, same similarity as the cluster",
+            "clone_pressure": "apps.coming_soon = 1, similarity >= CLONE_SIM_MIN (near look-alikes)",
             "thresholds": "radar/config.py"},
     }
 

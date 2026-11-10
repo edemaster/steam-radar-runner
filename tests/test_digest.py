@@ -99,6 +99,7 @@ class DigestTests(unittest.TestCase):
         self.assertIn("No concept survived this week", text)
         self.assertIn("Killed this week", text)
         self.assertIn("solo_scope", text)
+        self.assertEqual(text.count("too big solo_scope"), 2)  # each of the two kill reasons printed once
         self.assertEqual([r["verdict"] for r in self.ledger_rows()], ["kill", "kill"])
         self.assertEqual(self.con.execute("SELECT COUNT(*) FROM spend").fetchone()[0], 4)
 

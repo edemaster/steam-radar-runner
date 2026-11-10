@@ -86,6 +86,10 @@ SIM_DESC_WEIGHT = 0.3
 # top 1 % 0.21, top 0.1 % 0.32; real look-alikes (OpenFront / War of Dots, Sort Them Ducks / Supermarket
 # Chaos) scored 0.24-0.37 and nothing but a sequel reached the first guess of 0.45. 0.25 is ~ the top 0.5 %.
 SIM_MIN = 0.25
+# Clone pressure needs near look-alikes, not inspirations: at SIM_MIN a cluster matched 358 coming-soon games,
+# mostly loose (the first digest killed all four concepts on that count, 2026-11-11), while the real
+# near-clones there scored 0.49-0.70. 0.40 is above the top 0.1 % of candidate x old-hit pairs (0.32).
+CLONE_SIM_MIN = 0.40
 MAX_CLUSTER = 8
 SHARED_TAG_TOP = 10
 SHARED_TAG_FALLBACK = 5

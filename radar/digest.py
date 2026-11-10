@@ -80,8 +80,9 @@ Rules:
 SKEPTIC_SYSTEM = """You are the Skeptic. Your job is to kill this game concept card. Keep it only if it survives every check.
 You get the card, the signal cluster JSON it came from, and the developer BRIEF.
 Checks:
-(a) clone flood: read clone_pressure (count and top) and shared_tags. Many similar unreleased games means the
-    niche is filling up.
+(a) clone flood: read clone_pressure (count and top) and shared_tags. clone_pressure counts only near
+    look-alikes (similarity >= 0.40 to a member); weigh how close the top ones are, not the count alone. Many
+    near look-alikes unreleased means the niche is filling up.
 (b) bot or paid growth: read each candidate's review_sample shares and red_flags. A thin account is a reviewer
     whose only review is this one (Steam does not return owned-games counts). Flagged shares are a reason to doubt.
 (c) solo scope: work out the hour budget from the BRIEF's Time section (hours available times the maximum
@@ -284,8 +285,9 @@ def render(week: str, summary: str, banner: str | None, kept: list[dict[str, Any
                 f"Brief fit: {sk['brief_fit']}/5. Confidence: {sk['confidence']}/5. {sk['brief_fit_notes']}", ""]
         out += ["Prototype plan:"] + [f"{n}. {s}" for n, s in enumerate(card["prototype_plan"], 1)] + [""]
     if llm_ran and not kept and not banner:
-        out += ["## No concept survived this week", ""]
-        out += [f"- {k['card']['title']}: {_why(k)}" for k in killed] + [""]
+        out += ["## No concept survived this week", "",
+                f"The Skeptic killed all {len(killed)} card(s); the reasons are under Killed this week." if killed
+                else "No card reached the Skeptic.", ""]
     if killed:
         out += ["## Killed this week", ""]
         for k in killed:

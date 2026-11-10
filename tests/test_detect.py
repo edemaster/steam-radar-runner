@@ -204,6 +204,19 @@ class ClusterTests(unittest.TestCase):
         self.assertEqual(len(sig["appids"]), config.MAX_CLUSTER)
         self.assertIn(100, sig["appids"])
 
+    def test_clone_pressure_counts_near_look_alikes_only(self):
+        con = sqlite3.connect(":memory:")
+        con.row_factory = sqlite3.Row
+        con.executescript("CREATE TABLE apps(appid INT, name TEXT, release_date TEXT, coming_soon INT, type TEXT);"
+                          "CREATE TABLE app_tags(appid INT);")
+        for a in (11, 12, 13):
+            con.execute("INSERT INTO apps VALUES(?,?,?,1,'game')", (a, f"c{a}", "2027-01-01"))
+            con.execute("INSERT INTO app_tags VALUES(?)", (a,))
+        sims = {11: config.SIM_MIN + 0.01, 12: config.CLONE_SIM_MIN, 13: 0.7}  # 11 is a loose match only
+        cp = detect.clone_pressure(con, lambda a, b: sims[a], [1])
+        self.assertEqual(cp["count"], 2)
+        self.assertEqual([c["appid"] for c in cp["top"]], [13, 12])
+
     def test_score(self):
         sig = detect.build_signals([Stub(1, "candidate", 3.0)], [Stub(2, "old_hit")], lambda a, b: 0.6)[0]
         self.assertAlmostEqual(sig["score"], 3.0 + 2 + 0.6)
