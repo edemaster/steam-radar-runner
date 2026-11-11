@@ -108,6 +108,7 @@ jobs:
           if [ -d digests ]; then git add digests/; fi
           if [ -d logs ]; then git add logs/; fi
           if [ -f ledger.jsonl ]; then git add ledger.jsonl; fi
+          if [ -f followup.jsonl ]; then git add followup.jsonl; fi
           if git diff --cached --quiet; then echo "nothing new to commit"; else
             git commit -q -m "digest ${DAY:-unknown}"
             git pull -q --rebase

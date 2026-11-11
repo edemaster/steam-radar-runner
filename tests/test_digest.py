@@ -113,6 +113,7 @@ class DigestTests(unittest.TestCase):
         self.assertIn("solo_scope", text)
         self.assertEqual(text.count("too big solo_scope"), 2)  # each of the two kill reasons printed once
         self.assertEqual([r["verdict"] for r in self.ledger_rows()], ["kill", "kill"])
+        self.assertTrue(all(r.get("snapshot") for r in self.ledger_rows()))  # the 4/8-week follow-up needs it
         self.assertEqual(self.con.execute("SELECT COUNT(*) FROM spend").fetchone()[0], 4)
 
     def test_two_survivors_ranked_by_confidence_then_score(self):

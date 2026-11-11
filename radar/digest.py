@@ -24,9 +24,9 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from . import claims as claims_mod
-from . import config, db, voice
+from . import config, db, followup, voice
 from .http import Client, HttpError
-from .ledger import Ledger
+from .ledger import Ledger, snapshot_of
 from .llm import BudgetExceeded, Llm, LlmError, LlmRefusal, OutOfCredit, month_spend
 
 log = logging.getLogger("radar.digest")
@@ -306,7 +306,7 @@ def vet(llm: Llm, ledger: Ledger, clusters: list[dict[str, Any]], brief: str, we
             if sk["verdict"] != "keep":
                 v.judged.append({"cluster": c, "card": card, "skeptic": sk, "research": None, "skeptic2": None,
                                  "verdict": sk, "stage": "first"})
-                ledger.add(week, c, title, "kill", kill_reason(sk))
+                ledger.add(week, c, title, "kill", kill_reason(sk), snapshot=snapshot_of(c))
                 continue
             findings: list[dict[str, str]] | None = None
             fetched: dict[str, str] = {}
@@ -326,9 +326,9 @@ def vet(llm: Llm, ledger: Ledger, clusters: list[dict[str, Any]], brief: str, we
             v.judged.append({"cluster": c, "card": card, "skeptic": sk, "research": findings, "skeptic2": sk2,
                              "verdict": sk2, "stage": "both" if keep else "second"})
             if keep:
-                ledger.add(week, c, title, "keep", sk2.get("keep_case", "")[:200])
+                ledger.add(week, c, title, "keep", sk2.get("keep_case", "")[:200], snapshot=snapshot_of(c))
             else:
-                ledger.add(week, c, title, "kill", "second skeptic: " + kill_reason(sk2))
+                ledger.add(week, c, title, "kill", "second skeptic: " + kill_reason(sk2), snapshot=snapshot_of(c))
     except LlmError as exc:  # OutOfCredit, BudgetExceeded and plain errors all stop the LLM stages
         v.fatal = fatal_text(exc)
     return v
@@ -474,6 +474,11 @@ def run(db_path: str, signals_path: str, brief_path: str, ledger_path: str, out_
         summary = (f"{len(signals)} signal(s) found, {scouted} scouted, {valid} valid card(s), {len(kept)} kept, "
                    f"{len(killed)} killed. API spend this run ${spend_run:.2f}, this month ${month_spend(con):.2f}.")
     text = render(week, summary, banner, kept, killed, unvetted, heading, notes, brief, not no_llm)
+    # Did earlier signals keep growing? Checked 4 and 8 weeks after judging, from the ledger snapshots (no LLM).
+    fpath = os.path.join(os.path.dirname(os.path.abspath(ledger_path)), "followup.jsonl")
+    lines = followup.summary_lines(followup.check(con, ledger_path, fpath, date.fromisoformat(week)), fpath)
+    if lines:
+        text = text.replace("## Notes", "\n".join(lines) + "\n\n## Notes", 1)
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, f"{week}.md"), "w", encoding="utf-8", newline="\n") as f:
         f.write(text)
