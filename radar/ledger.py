@@ -39,14 +39,23 @@ class Ledger:
     def recent_titles(self, n: int = 40) -> list[str]:
         return [e["title"] for e in self.entries[-n:] if e.get("title")]
 
-    def add(self, week: str, cluster: dict[str, Any], title: str | None, verdict: str, reason: str) -> None:
+    def add(self, week: str, cluster: dict[str, Any], title: str | None, verdict: str, reason: str,
+            snapshot: dict[str, Any] | None = None) -> None:
         entry = {"week": week, "fingerprint": cluster["fingerprint"],
                  "appids": [m["appid"] for m in cluster["members"]],
                  "candidate_appids": [m["appid"] for m in cluster["members"] if m["role"] == "candidate"],
                  "title": title, "verdict": verdict, "reason": reason}
+        if snapshot is not None:
+            entry["snapshot"] = snapshot
         self.entries.append(entry)
 
     def save(self) -> None:
         with open(self.path, "w", encoding="utf-8", newline="\n") as f:
             for e in self.entries:
                 f.write(json.dumps(e, ensure_ascii=False) + "\n")
+
+
+def snapshot_of(cluster: dict[str, Any]) -> dict[str, Any]:
+    """Counts of the candidate games when judged, for the follow-up check (radar/followup.py)."""
+    return {str(m["appid"]): {"reviews_total": m.get("reviews_total"), "w1": m.get("w1")}
+            for m in cluster["members"] if m["role"] == "candidate"}

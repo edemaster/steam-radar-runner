@@ -1,0 +1,120 @@
+name: monthly
+
+on:
+  schedule:
+    - cron: "17 7 1 * *"
+  workflow_dispatch:
+    inputs:
+      no_llm:
+        description: "Skip the Anthropic call: the market map only lists its tables"
+        type: boolean
+        default: false
+
+concurrency:
+  group: radar-db
+  cancel-in-progress: false
+
+# Public repo, private data repo: the map and its log are committed to DATA_REPO, never printed in full here.
+permissions:
+  contents: write
+
+jobs:
+  monthly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      DATA_REPO: edemaster/steam-radar
+      NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check out the private data repo
+        uses: actions/checkout@v4
+        with:
+          repository: edemaster/steam-radar
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: data
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+
+      - name: Download database
+        run: |
+          # Only a missing release may start fresh: a failed download must stop the job,
+          # or the upload below would replace the whole history with an empty database.
+          if gh release view db-latest >/dev/null 2>&1; then
+            gh release download db-latest -p radar.db.gz
+            gunzip -f radar.db.gz
+          else
+            echo "No db-latest release yet: starting fresh"
+          fi
+
+      - name: Market map
+        id: map
+        continue-on-error: true
+        run: |
+          month=$(date -u +%Y-%m)
+          echo "MONTH=$month" >> "$GITHUB_ENV"
+          flag=""
+          if [ "${{ inputs.no_llm }}" = "true" ]; then flag="--no-llm"; fi
+          mkdir -p data/logs data/market
+          log="data/logs/market_${month}.txt"
+          code=0
+          python -m radar.market_map --db radar.db --brief data/BRIEF.md --out data/market/ $flag > "$log" 2>&1 || code=$?
+          grep '^market_map:' "$log" || echo "market_map: no summary line (exit $code), see logs/ in the data repo"
+          exit $code
+
+      - name: Pack and upload
+        if: always()
+        run: |
+          # The spend rows are the monthly cap's memory: the database must go back.
+          if [ ! -f radar.db ]; then echo "no radar.db, nothing to upload"; exit 0; fi
+          ok=$(python -c "import sqlite3;print(sqlite3.connect('radar.db').execute('PRAGMA integrity_check').fetchone()[0])")
+          if [ "$ok" != "ok" ]; then echo "integrity_check failed: $ok"; exit 1; fi
+          gzip -kf radar.db
+          gh release view db-latest >/dev/null 2>&1 || \
+            gh release create db-latest --prerelease --title db-latest --notes "rolling database"
+          gh release upload db-latest radar.db.gz --clobber
+
+      - name: Commit the map to the data repo
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+          GH_REPO: edemaster/steam-radar
+        working-directory: data
+        run: |
+          if [ -z "${MONTH:-}" ] || [ ! -f "market/${MONTH}.md" ]; then echo "no market map written"; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          if [ -d market ]; then git add market/; fi
+          if [ -d logs ]; then git add logs/; fi
+          if git diff --cached --quiet; then echo "nothing new to commit"; else
+            git commit -q -m "market map ${MONTH:-unknown}"
+            git pull -q --rebase
+            git push -q
+          fi
+
+      - name: Monthly push
+        if: always()
+        shell: bash
+        run: |
+          month="${MONTH:-none}"
+          summary=$(grep '^market_map:' "data/logs/market_${month}.txt" 2>/dev/null || true)
+          if [ "${{ steps.map.outcome }}" = "success" ]; then
+            python -m radar.notify --title "Radar: monthly market map" \
+              --click "https://github.com/${DATA_REPO}/blob/main/market/${month}.md" \
+              "${summary:-market map written}"
+          else
+            python -m radar.notify --title "Radar: monthly market map needs a look" --priority high --tags warning \
+              --click "https://github.com/${DATA_REPO}/blob/main/market/${month}.md" \
+              "${summary:-market map failed, see logs/ in the data repo}"
+          fi
+
+      - name: Fail the job if the map failed
+        if: steps.map.outcome == 'failure'
+        run: |
+          echo "the market map step failed (see logs/ in the data repo; tables are still written on an LLM error)"
+          exit 1
