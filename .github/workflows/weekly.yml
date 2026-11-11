@@ -32,6 +32,7 @@ jobs:
       TWITCH_CLIENT_SECRET: ${{ secrets.TWITCH_CLIENT_SECRET }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       DATA_REPO: edemaster/steam-radar
+      NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
     steps:
       - uses: actions/checkout@v4
       - name: Check out the private data repo
@@ -116,6 +117,16 @@ jobs:
             gh issue create --title "Radar digest ${DAY}" --body-file "digests/${DAY}.md" > /dev/null
             echo "issue opened in the data repo"
           fi
+
+      - name: Sunday push
+        if: always()
+        shell: bash
+        run: |
+          click="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          if [ -n "${DAY:-}" ] && [ -f "data/digests/${DAY}.md" ]; then
+            click="https://github.com/${DATA_REPO}/blob/main/digests/${DAY}.md"
+          fi
+          python -m radar.notify weekly --digest-log "data/logs/digest_${DAY:-none}.txt"             --digest-md "data/digests/${DAY:-none}.md" --click "$click"
 
       - uses: actions/upload-artifact@v4
         if: always()

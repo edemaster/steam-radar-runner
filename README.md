@@ -32,7 +32,12 @@ Deliberately NOT used:
    optionally `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`. Secrets never reach a public repo's logs or forks;
    the workflows run only on a schedule or by hand, never on pull requests. Public logs carry counts and
    public Steam names only: the digest's own output goes to the data repo's `logs/`.
-5. Run the workflow once by hand: Actions -> daily -> Run workflow.
+5. Phone pushes (optional, free): install the ntfy app (https://ntfy.sh), subscribe to a long random topic
+   name, and save the same name as the `NTFY_TOPIC` secret. Actions -> notify-test sends a test push. Then
+   the daily run pushes one line each morning (what was collected, how many young games are growing fast,
+   possible signals) and the weekly run one on Sunday (how many concepts survived, the API spend), with a
+   high-priority push when a run fails. Messages hold counts and public game names, never a concept.
+6. Run the workflow once by hand: Actions -> daily -> Run workflow.
 
 ## Workflows
 - **daily** (05:17 UTC): collects Steam data (and a Twitch snapshot) into `radar.db`. No LLM.

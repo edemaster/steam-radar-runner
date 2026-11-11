@@ -22,6 +22,7 @@ jobs:
       STEAM_API_KEY: ${{ secrets.STEAM_API_KEY }}
       TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
       TWITCH_CLIENT_SECRET: ${{ secrets.TWITCH_CLIENT_SECRET }}
+      NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -41,7 +42,9 @@ jobs:
           fi
 
       - name: Collect
-        run: python -m radar.collect --db radar.db
+        id: collect
+        shell: bash
+        run: python -m radar.collect --db radar.db 2>&1 | tee collect.log
 
       - name: Pack and upload
         if: always()
@@ -63,3 +66,24 @@ jobs:
               --jq ".[] | select(.tagName|startswith(\"db-backup-\")) | select(.createdAt < \"$cutoff\") | .tagName" |
               while read -r old; do gh release delete "$old" --yes --cleanup-tag; done
           fi
+
+      - name: Preview detection (on a copy, writes nothing back)
+        id: preview
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          if [ ! -f radar.db ]; then exit 0; fi
+          cp radar.db "$RUNNER_TEMP/preview.db"
+          python -m radar.detect --db "$RUNNER_TEMP/preview.db" --week "$(date -u +%F)" --report             --out "$RUNNER_TEMP/preview" > preview.log 2>&1
+
+      - name: Morning push
+        if: always()
+        shell: bash
+        run: |
+          run_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          if [ "${{ steps.collect.outcome }}" != "success" ]; then
+            python -m radar.notify --title "Radar: daily run FAILED" --priority high --tags warning               --click "$run_url" "The Steam collection failed this morning. Tap for the log."
+            exit 0
+          fi
+          python -m radar.notify daily --collect-log collect.log --preview-log preview.log             --signals-dir "$RUNNER_TEMP/preview" --click "$run_url"

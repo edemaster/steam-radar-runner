@@ -1,0 +1,26 @@
+name: notify-test
+
+# Manual only: sends one test push to the NTFY_TOPIC secret, to check the phone setup.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Send a test push
+        run: |
+          if [ -z "$NTFY_TOPIC" ]; then echo "NTFY_TOPIC secret is not set"; exit 1; fi
+          python -m radar.notify --title "Steam radar" --tags tada \
+            "Test push: your morning and Sunday radar messages will arrive here."
