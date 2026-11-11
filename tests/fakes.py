@@ -61,6 +61,25 @@ class Msg:
         self.usage = _Usage(i, o)
 
 
+class RMsg(Msg):
+    """A research message: real SDK content blocks (text, server tool use, fetched pages) plus search usage."""
+
+    def __init__(self, text: str = "", pages: dict[str, str] | None = None, stop: str = "end_turn", searches: int = 0,
+                 i: int = 1000, o: int = 500, extra_blocks: list[Any] | None = None) -> None:
+        from anthropic import types as t
+        super().__init__("", stop, i, o)
+        blocks: list[Any] = list(extra_blocks or [])
+        for url, body in (pages or {}).items():
+            blocks.append(t.WebFetchToolResultBlock(type="web_fetch_tool_result", tool_use_id="f", content=t.WebFetchBlock(
+                type="web_fetch_result", url=url, content=t.DocumentBlock(
+                    type="document", source=t.PlainTextSource(type="text", media_type="text/plain", data=body)))))
+        if text:
+            blocks.append(t.TextBlock(type="text", text=text))
+        self.content = blocks
+        self.usage = t.Usage(input_tokens=i, output_tokens=o,
+                             server_tool_use=t.ServerToolUsage(web_fetch_requests=0, web_search_requests=searches))
+
+
 class _Stream:
     def __init__(self, msg: Any) -> None:
         self.msg = msg
@@ -81,10 +100,17 @@ class FakeAnthropic:
     """client.messages.stream(**kw) -> canned Msg or raised exception; `answers` maps model -> callable(kwargs)."""
 
     def __init__(self, answers: dict[str, Callable[[dict[str, Any]], Any]]) -> None:
-        self.answers = answers
+        self.answers: dict[Any, Callable[[dict[str, Any]], Any]] = answers
         self.calls: list[dict[str, Any]] = []
         self.messages = self
 
     def stream(self, **kw: Any) -> _Stream:
         self.calls.append(kw)
-        return _Stream(self.answers[kw["model"]](kw))
+        key: Any = kw["model"]
+        if "tools" in kw and (key, "research") in self.answers:
+            key = (key, "research")
+        elif "second, independent Skeptic" in kw.get("system", "") and (key, "skeptic2") in self.answers:
+            key = (key, "skeptic2")
+        elif kw.get("system", "").startswith("You summarise") and (key, "voice") in self.answers:
+            key = (key, "voice")
+        return _Stream(self.answers[key](kw))

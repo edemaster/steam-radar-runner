@@ -7,7 +7,9 @@ from unittest import mock
 from radar import config, db, digest
 from radar.llm import Llm
 
-from .fakes import FakeAnthropic, Msg
+from radar.http import HttpError
+
+from .fakes import FakeAnthropic, FakeClient, Msg, RMsg
 from .test_llm import status_error
 
 WEEK = "2026-11-10"
@@ -77,8 +79,18 @@ class DigestTests(unittest.TestCase):
         with open(self.sig, "w", encoding="utf-8") as f:
             json.dump({"week": WEEK, "signals": clusters}, f)
 
-    def run_digest(self, scout_fn, skeptic_fn, **kw):
-        self.client = FakeAnthropic({config.SCOUT_MODEL: scout_fn, config.SKEPTIC_MODEL: skeptic_fn})
+    PAGE = "https://example.com/news"
+
+    def research_ok(self, kw):
+        return RMsg(f"notes\nFINDING: a streamer drove 4,200 wishlists | URL: {self.PAGE}\nFINDING: bogus | URL: https://x.org/y",
+                    pages={self.PAGE + "?utm=1": "A streamer drove 4,200 wishlists and 12.5% of sales."}, searches=2)
+
+    def run_digest(self, scout_fn, skeptic_fn, skeptic2_fn=None, research_fn=None, **kw):
+        answers = {config.SCOUT_MODEL: scout_fn, config.SKEPTIC_MODEL: skeptic_fn,
+                   (config.RESEARCH_MODEL, "research"): research_fn or self.research_ok}
+        if skeptic2_fn:
+            answers[(config.SKEPTIC2_MODEL, "skeptic2")] = skeptic2_fn
+        self.client = FakeAnthropic(answers)
         llm = Llm(self.client, db.connect(self.db))
         code = digest.run(self.db, self.sig, self.brief, self.ledger, self.out, llm=llm, **kw)
         with open(os.path.join(self.out, f"{WEEK}.md"), encoding="utf-8") as f:
@@ -140,7 +152,7 @@ class DigestTests(unittest.TestCase):
         self.assertEqual(rows["fpB"]["verdict"], "keep")
         self.assertIn("Concept fpB", text)
         self.assertNotIn("## 1. Bad", text)
-        self.assertEqual(len([c for c in self.client.calls if c["model"] == config.SKEPTIC_MODEL]), 1)
+        self.assertEqual(len([c for c in self.client.calls if c["system"].startswith("You are the Skeptic") and "second, independent" not in c["system"]]), 1)  # A only for fpB; B is "second"
 
     def test_retry_that_succeeds_is_used(self):
         self.signals([A])
@@ -223,3 +235,77 @@ class DigestTests(unittest.TestCase):
         self.assertNotIn("twitch", sigs[1]["members"][0])
         self.signals([A, B])
         self.assertEqual(digest.member_appids(digest.load_signals(self.sig)[1]), [100, 101, 200, 201])
+
+    def test_first_skeptic_kill_is_final_and_no_research(self):
+        self.signals([A])
+        code, text = self.run_digest(self.scout_ok, lambda kw: Msg(verdict("kill")),
+                                     skeptic2_fn=lambda kw: self.fail("B must not run"),
+                                     research_fn=lambda kw: self.fail("research must not run"))
+        self.assertEqual([("tools" in c) for c in self.client.calls], [False, False])
+        self.assertIn("(solo_scope: too big solo_scope; first Skeptic)", text)
+        self.assertEqual([r["verdict"] for r in self.ledger_rows()], ["kill"])
+
+    def test_second_skeptic_kill(self):
+        self.signals([A])
+        seen = []
+
+        def b(kw):
+            seen.append(kw["messages"][0]["content"])
+            return Msg(verdict("kill", reason="real_signal"))
+        code, text = self.run_digest(self.scout_ok, lambda kw: Msg(verdict("keep")), skeptic2_fn=b)
+        rows = self.ledger_rows()
+        self.assertEqual((len(rows), rows[0]["verdict"]), (1, "kill"))
+        self.assertTrue(rows[0]["reason"].startswith("second skeptic: real_signal"))
+        self.assertIn("second Skeptic", text)
+        self.assertIn("No concept survived", text)
+        self.assertIn("a streamer drove 4,200 wishlists", seen[0])  # B sees the research
+        self.assertNotIn("bogus", seen[0])  # a finding whose url was never fetched is dropped
+        self.assertNotIn("survives all checks", seen[0])  # and not A's verdict
+
+    def test_both_keep_renders_research_and_checks_b_claims_against_pages(self):
+        self.signals([A])
+        sk2 = verdict("keep", 4)
+        sk2["claims"] = [{"text": "streamer", "value": 4200, "url": self.PAGE},
+                         {"text": "invented", "value": 999, "url": self.PAGE}]
+        code, text = self.run_digest(self.scout_ok, lambda kw: Msg(verdict("keep", 2)), skeptic2_fn=lambda kw: Msg(sk2))
+        self.assertIn("Kept by both Skeptics.", text)
+        self.assertIn("Research:", text)
+        self.assertIn(f"- a streamer drove 4,200 wishlists ([source]({self.PAGE}))", text)
+        self.assertIn(f"**4200** ([source]({self.PAGE}))", text)
+        self.assertNotIn("999", text.split("## Notes")[0])
+        self.assertIn("Removed a second Skeptic claim", text)
+        self.assertIn("Confidence: 4/5", text)  # B's fields are the ones shown
+        self.assertEqual([r["verdict"] for r in self.ledger_rows()], ["keep"])
+        rows = self.con.execute("SELECT purpose, usd FROM spend ORDER BY rowid").fetchall()
+        self.assertEqual([r["purpose"] for r in rows], ["scout", "skeptic", "research", "skeptic2"])
+
+    def test_steam_error_in_voice_is_a_note_and_the_scout_still_runs(self):
+        self.signals([A])
+
+        def boom(p):
+            raise HttpError("steam down", 500)
+        self.client = FakeAnthropic({config.SCOUT_MODEL: self.scout_ok, config.SKEPTIC_MODEL: lambda kw: Msg(verdict("kill"))})
+        llm = Llm(self.client, db.connect(self.db))
+        code = digest.run(self.db, self.sig, self.brief, self.ledger, self.out, llm=llm,
+                          client=FakeClient({"GetAppReviews": boom}))
+        with open(os.path.join(self.out, f"{WEEK}.md"), encoding="utf-8") as f:
+            text = f.read()
+        self.assertEqual(code, 0)
+        self.assertIn("No player voice for 'Game 100'", text)
+        self.assertEqual(len([c for c in self.client.calls if c["model"] == config.SCOUT_MODEL]), 1)
+
+    def test_voice_reaches_the_scout(self):
+        self.signals([A])
+        rows = [{"review": f"Great game number {i}, wish for more maps", "voted_up": True,
+                 "author": {"playtime_forever": 600}} for i in range(12)]
+        voice_out = {"n_read": 0, "n_positive": 0, "loves": [], "audience": "a",
+                     "complaints": [{"point": "maps", "mentions": 3, "quote": "wish for more maps"}], "wishes": []}
+        answers = {config.SCOUT_MODEL: self.scout_ok, config.SKEPTIC_MODEL: lambda kw: Msg(verdict("kill")),
+                   (config.VOICE_MODEL, "voice"): lambda kw: Msg(voice_out)}
+        self.client = FakeAnthropic(answers)
+        llm = Llm(self.client, db.connect(self.db))
+        digest.run(self.db, self.sig, self.brief, self.ledger, self.out, llm=llm,
+                   client=FakeClient({"GetAppReviews": lambda p: {"response": {"reviews": rows}}}))
+        scout_user = [c for c in self.client.calls if c["system"].startswith("You are a game concept scout")][0]
+        self.assertIn('"player_voice"', scout_user["messages"][0]["content"])
+        self.assertIn('"n_read": 12', scout_user["messages"][0]["content"])
