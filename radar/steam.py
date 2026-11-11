@@ -194,3 +194,34 @@ def review_sample(client: Client, appid: int,
     total = len(rows)
     return {"n": total, "share_short_play": short / total, "share_few_games": (few / owned_rows) if owned_rows else None,
             "share_free": free / total, "languages": len(langs)}
+
+
+def review_texts(client: Client, appid: int, n: int = config.VOICE_REVIEWS,
+                 language: str = config.VOICE_LANGUAGE) -> list[dict[str, Any]]:
+    """The n newest reviews in one language as [{text, up, hours}]; nothing else is read from the response.
+
+    WHY: the player-voice summary needs what people wrote, not who they are. Same privacy rule as
+    review_sample: author ids and every other field are never copied into the result, and the response is
+    dropped. Pages with filter=1 (newest first) and follows the cursor until n rows, no rows, or a repeated cursor.
+    """
+    out: list[dict[str, Any]] = []
+    cursor = "*"
+    seen: set[str] = set()
+    while len(out) < n and cursor not in seen:
+        seen.add(cursor)
+        params: dict[str, Any] = {"appid": appid, "filter": 1, "day_range": 0, "languages[0]": language,
+                                  "purchase_type": 1, "num_per_page": 100, "cursor": cursor}
+        resp = client.get_json(f"{API}/IUserReviewsService/GetAppReviews/v1/", params=params).get("response", {})
+        rows = resp.get("reviews") or []
+        if not rows:
+            break
+        for r in rows:
+            if len(out) >= n:
+                break
+            out.append({"text": str(r.get("review") or "")[:config.VOICE_REVIEW_CHARS],
+                        "up": bool(r.get("voted_up")),
+                        "hours": round(int((r.get("author") or {}).get("playtime_forever", 0)) / 60, 1)})
+        cursor = str(resp.get("cursor") or "")
+        if not cursor:
+            break
+    return out

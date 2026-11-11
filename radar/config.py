@@ -72,7 +72,7 @@ OLD_HIT_MIN_REVIEWS = 2000
 CAND_MAX_DAYS = 90  # candidate: released at most this many days before the week
 CAND_MIN_REVIEWS = 100
 CAND_STEADY_MIN_AGE = 14  # from this age the last two 7-day windows are compared
-CAND_W1_MIN = 50
+CAND_W1_MIN = 35
 CAND_YOUNG_MIN_AGE = 7  # 7..13 days: only first-week reviews count
 CAND_YOUNG_FIRST_WEEK = 200
 CCU_MIN_POINTS = 10
@@ -85,7 +85,9 @@ SIM_DESC_WEIGHT = 0.3
 # Calibrated on the first full database (2026-11-11, 34 candidates x 115 old hits): median pair 0.03,
 # top 1 % 0.21, top 0.1 % 0.32; real look-alikes (OpenFront / War of Dots, Sort Them Ducks / Supermarket
 # Chaos) scored 0.24-0.37 and nothing but a sequel reached the first guess of 0.45. 0.25 is ~ the top 0.5 %.
-SIM_MIN = 0.25
+# Widened 2026-11-11: 0.22 matched 19 of 34 candidates on that database, 0.25 matched 11; the two Skeptics
+# do the filtering now, so recall matters more than precision here.
+SIM_MIN = 0.22
 # Clone pressure needs near look-alikes, not inspirations: at SIM_MIN a cluster matched 358 coming-soon games,
 # mostly loose (the first digest killed all four concepts on that count, 2026-11-11), while the real
 # near-clones there scored 0.49-0.70. 0.40 is above the top 0.1 % of candidate x old-hit pairs (0.32).
@@ -100,21 +102,26 @@ SHORT_PLAY_MINUTES = 30
 FEW_GAMES_MAX = 2
 
 # --- Chunk 3: LLM digest (tuned only here) ---
-SCOUT_MODEL = os.environ.get("RADAR_SCOUT_MODEL") or "claude-haiku-5-5"
+SCOUT_MODEL = os.environ.get("RADAR_SCOUT_MODEL") or "claude-sonnet-5-5"
 SKEPTIC_MODEL = os.environ.get("RADAR_SKEPTIC_MODEL") or "claude-opus-5-5"
+SKEPTIC2_MODEL = os.environ.get("RADAR_SKEPTIC2_MODEL") or "claude-opus-5-5"
 SCOUT_EFFORT = "medium"
 SKEPTIC_EFFORT = "high"
+SKEPTIC2_EFFORT = "high"
 SCOUT_MAX_TOKENS = 4000
 SKEPTIC_MAX_TOKENS = 16000
 # USD per million tokens: (input, output).
 PRICES: dict[str, tuple[float, float]] = {
     "claude-haiku-5-5": (0.10, 0.50),
+    "claude-sonnet-5-5": (2.00, 10.00),
     "claude-opus-5-5": (4.00, 20.00),
 }
-LLM_MONTHLY_CAP_USD = 16.0  # about EUR 15, below the Console limit of $20
-LLM_RUN_CAP_USD = 4.0
-MAX_SCOUT_CLUSTERS = 10
-MAX_SKEPTIC_CARDS = 6
+# Decided 2026-11-11: the account has $200/month of API credits; the Console spend limit should be at least $60.
+LLM_MONTHLY_CAP_USD = 50.0
+LLM_RUN_CAP_USD = 12.0
+WEB_SEARCH_USD = 0.01  # web search is $10 per 1,000 searches; web fetch is not metered beyond tokens
+MAX_SCOUT_CLUSTERS = 20
+MAX_SKEPTIC_CARDS = 15
 MAX_DIGEST_CONCEPTS = 3
 LEDGER_LOOKBACK_WEEKS = 26
 
@@ -124,3 +131,23 @@ RED_FLAG_SHARE_SHORT_PLAY = 0.50
 RED_FLAG_SHARE_FEW_GAMES = 0.50
 RED_FLAG_MAX_LANGUAGES = 2
 RED_FLAG_LANGUAGES_MIN_N = 50
+
+# Player voice: what a candidate's players love, complain about and wish for (recent reviews, one language).
+VOICE_MODEL = os.environ.get("RADAR_VOICE_MODEL") or "claude-sonnet-5-5"
+VOICE_EFFORT = "medium"
+VOICE_MAX_TOKENS = 3000
+VOICE_REVIEWS = 200
+VOICE_REVIEW_CHARS = 600
+VOICE_LANGUAGE = "english"
+VOICE_MIN_REVIEWS = 10
+VOICE_MAX_PER_CLUSTER = 2
+
+# Web research on a card the first Skeptic kept (web tools run server-side, so fetched pages enter the context).
+RESEARCH_MODEL = "claude-sonnet-5-5"
+RESEARCH_EFFORT = "medium"
+RESEARCH_MAX_TOKENS = 6000
+RESEARCH_MAX_SEARCHES = 6
+RESEARCH_MAX_FETCHES = 6
+RESEARCH_FETCH_TOKENS = 15000
+RESEARCH_MAX_CONTINUATIONS = 4
+RESEARCH_WORST_INPUT_TOKENS = 200_000  # worst-case input for the budget check

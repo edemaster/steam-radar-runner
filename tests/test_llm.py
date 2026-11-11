@@ -47,15 +47,16 @@ class LlmTests(unittest.TestCase):
         row = self.con.execute("SELECT * FROM spend").fetchone()
         self.assertEqual((row["model"], row["input_tokens"], row["output_tokens"], row["purpose"]),
                          (M, 2_000_000, 1_000_000, "t"))
-        self.assertAlmostEqual(row["usd"], 2 * 0.10 + 0.50)
-        self.assertAlmostEqual(llm.run_spend, 0.70)
+        pin, pout = config.PRICES[M]
+        self.assertAlmostEqual(row["usd"], 2 * pin + pout)
+        self.assertAlmostEqual(llm.run_spend, 2 * pin + pout)
         kw = self.client.calls[0]
         self.assertEqual(kw["output_config"]["format"]["type"], "json_schema")
         for banned in ("temperature", "top_p", "top_k", "thinking"):
             self.assertNotIn(banned, kw)
 
     def test_monthly_cap_blocks_before_calling(self):
-        spend_row(self.con, datetime.now(timezone.utc).isoformat(timespec="seconds"), 15.999)
+        spend_row(self.con, datetime.now(timezone.utc).isoformat(timespec="seconds"), config.LLM_MONTHLY_CAP_USD - 0.001)
         llm = self.llm(lambda kw: Msg({"a": 1}))
         with self.assertRaises(BudgetExceeded):
             self.call(llm)

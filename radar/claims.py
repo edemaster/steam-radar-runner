@@ -6,6 +6,7 @@ digest can be clicked and checked. A card with no claims, or any bad claim, is r
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -37,8 +38,16 @@ def numeric_leaves(obj: Any) -> list[float]:
     return out
 
 
-def allowed(doc: dict[str, Any]) -> dict[str, list[float]]:
-    """Map normalised url -> the numbers a claim may cite there."""
+_NUM_RE = re.compile(r"(?<![\w.])\d{1,3}(?:,\d{3})+(?:\.\d+)?|(?<![\w.])\d+(?:\.\d+)?")
+
+
+def numbers_in_text(text: str) -> list[float]:
+    """Every number in page text: 12,345 / 12.5 / 40% (the percent sign is not part of the number)."""
+    return [float(m.group(0).replace(",", "")) for m in _NUM_RE.finditer(text or "")]
+
+
+def allowed(doc: dict[str, Any], extra: dict[str, list[float]] | None = None) -> dict[str, list[float]]:
+    """Map normalised url -> the numbers a claim may cite there; `extra` (fetched pages) adds more urls."""
     cluster = [float(doc["score"])] if _is_num(doc.get("score")) else []
     cp = doc.get("clone_pressure") or {}
     if _is_num(cp.get("count")):
@@ -55,6 +64,8 @@ def allowed(doc: dict[str, Any]) -> dict[str, list[float]]:
             add(tw["url"], numeric_leaves({k: v for k, v in tw.items() if k != "url"}))
     for c in cp.get("top", []):
         add(f"https://store.steampowered.com/app/{c['appid']}/", ([float(c["sim"])] if _is_num(c.get("sim")) else []) + cluster)
+    for url, nums in (extra or {}).items():
+        add(url, [float(n) for n in nums])
     for url, nums in out.items():  # a share in [0,1] may be quoted as a percent
         out[url] = nums + [n * 100 for n in nums if 0 <= n <= 1]
     return out
@@ -64,11 +75,11 @@ def _close(a: float, b: float) -> bool:
     return abs(a - b) <= max(0.01, 0.005 * abs(b))
 
 
-def check(claims: Any, doc: dict[str, Any]) -> list[str]:
+def check(claims: Any, doc: dict[str, Any], extra: dict[str, list[float]] | None = None) -> list[str]:
     """Error strings for a claim list; empty means every claim is backed by the document."""
     if not isinstance(claims, list) or not claims:
         return ["no claims: a card needs at least one claim with a value and a source url"]
-    ok = allowed(doc)
+    ok = allowed(doc, extra)
     errors = []
     for i, c in enumerate(claims):
         label = f"claim {i + 1}"
