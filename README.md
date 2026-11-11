@@ -63,6 +63,23 @@ Deliberately NOT used:
   or whose candidate games were all judged in the last 26 weeks, is not judged again. Edit `BRIEF.md` any time:
   the Skeptic reads it every week.
 
+## Follow-up check
+Does a signal keep growing after we judged it? Each ledger line now stores the candidate games' review counts
+at judging time. `python -m radar.followup` (run inside the weekly digest) revisits every line 28 and 56 days
+later and writes `followup.jsonl` next to the ledger: a game "held" if its last-7-day reviews are at least half
+of what they were and its total grew, else "faded"; a line is held if any game held. The digest's "Follow-up"
+section lists new results and a running tally (held share for keeps vs kills, and per failing check for kills),
+so you can see whether the Skeptic kills good ideas. Runs weekly, no API calls, free.
+
+## Monthly market map
+- **monthly** (1st of the month, 07:17 UTC): `python -m radar.market_map` ranks tag pairs from the database:
+  rising (more releases than the 3 months before, weighted by how often those games became hits), saturating
+  (growing but already crowded), and small-team odds (how often tiny-team games in the pair reached 500+
+  reviews). One Opus call writes a one-page read for your brief; every number in it is checked against the
+  tables and a bullet with an unbacked number is dropped. Lands in the data repo as `market/YYYY-MM.md`
+  (log in `logs/`), with a phone push. Cost about $1-3 a month from the same monthly cap as the digest; tick
+  `no_llm` on a manual run for tables only. An API error still writes the tables, with a banner, and fails the job.
+
 ## Cost guards
 - Prepaid Anthropic credit with auto-reload off: a hard ceiling.
 - Console monthly spend limit ($20).
