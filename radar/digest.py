@@ -265,6 +265,11 @@ def add_voices(llm: Llm, client: Client, cluster: dict[str, Any], notes: list[st
         except HttpError as exc:
             notes.append(f"No player voice for {m['name']!r}: Steam reviews failed ({exc}).")
             continue
+        except (BudgetExceeded, OutOfCredit):
+            raise  # money stops every stage
+        except LlmError as exc:  # a cut-off or refused summary only loses this game's voice
+            notes.append(f"No player voice for {m['name']!r}: {exc}")
+            continue
         if pv:
             m["player_voice"] = pv
 

@@ -295,6 +295,22 @@ class DigestTests(unittest.TestCase):
         self.assertIn("No player voice for 'Game 100'", text)
         self.assertEqual(len([c for c in self.client.calls if c["model"] == config.SCOUT_MODEL]), 1)
 
+    def test_cut_off_voice_is_a_note_and_the_scout_still_runs(self):
+        """The first live run (2026-11-11) stopped every stage on one voice summary cut off at max_tokens."""
+        self.signals([A])
+        rows = [{"review": f"Great game {i}", "voted_up": True, "author": {"playtime_forever": 60}} for i in range(12)]
+        answers = {config.SCOUT_MODEL: self.scout_ok, config.SKEPTIC_MODEL: lambda kw: Msg(verdict("kill")),
+                   (config.VOICE_MODEL, "voice"): lambda kw: Msg({}, stop="max_tokens")}
+        self.client = FakeAnthropic(answers)
+        llm = Llm(self.client, db.connect(self.db))
+        code = digest.run(self.db, self.sig, self.brief, self.ledger, self.out, llm=llm,
+                          client=FakeClient({"GetAppReviews": lambda p: {"response": {"reviews": rows}}}))
+        with open(os.path.join(self.out, f"{WEEK}.md"), encoding="utf-8") as f:
+            text = f.read()
+        self.assertEqual(code, 0)
+        self.assertIn("No player voice for 'Game 100'", text)
+        self.assertEqual([r["verdict"] for r in self.ledger_rows()], ["kill"])
+
     def test_voice_reaches_the_scout(self):
         self.signals([A])
         rows = [{"review": f"Great game number {i}, wish for more maps", "voted_up": True,

@@ -108,7 +108,9 @@ SKEPTIC2_MODEL = os.environ.get("RADAR_SKEPTIC2_MODEL") or "claude-opus-5-5"
 SCOUT_EFFORT = "medium"
 SKEPTIC_EFFORT = "high"
 SKEPTIC2_EFFORT = "high"
-SCOUT_MAX_TOKENS = 4000
+# Output limits include adaptive thinking (Sonnet/Opus think by default): the first live run cut the voice
+# summary off at 3,000 tokens (2026-11-11).
+SCOUT_MAX_TOKENS = 12000
 SKEPTIC_MAX_TOKENS = 16000
 # USD per million tokens: (input, output).
 PRICES: dict[str, tuple[float, float]] = {
@@ -135,7 +137,7 @@ RED_FLAG_LANGUAGES_MIN_N = 50
 # Player voice: what a candidate's players love, complain about and wish for (recent reviews, one language).
 VOICE_MODEL = os.environ.get("RADAR_VOICE_MODEL") or "claude-sonnet-5-5"
 VOICE_EFFORT = "medium"
-VOICE_MAX_TOKENS = 3000
+VOICE_MAX_TOKENS = 12000
 VOICE_REVIEWS = 200
 VOICE_REVIEW_CHARS = 600
 VOICE_LANGUAGE = "english"
@@ -145,7 +147,7 @@ VOICE_MAX_PER_CLUSTER = 2
 # Web research on a card the first Skeptic kept (web tools run server-side, so fetched pages enter the context).
 RESEARCH_MODEL = "claude-sonnet-5-5"
 RESEARCH_EFFORT = "medium"
-RESEARCH_MAX_TOKENS = 6000
+RESEARCH_MAX_TOKENS = 16000
 RESEARCH_MAX_SEARCHES = 6
 RESEARCH_MAX_FETCHES = 6
 RESEARCH_FETCH_TOKENS = 15000
