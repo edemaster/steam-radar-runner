@@ -22,5 +22,4 @@ jobs:
       - name: Send a test push
         run: |
           if [ -z "$NTFY_TOPIC" ]; then echo "NTFY_TOPIC secret is not set"; exit 1; fi
-          python -m radar.notify --title "Steam radar" --tags tada \
-            "Test push: your morning and Sunday radar messages will arrive here."
+          python -m radar.notify test

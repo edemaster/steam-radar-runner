@@ -102,16 +102,13 @@ jobs:
         shell: bash
         run: |
           month="${MONTH:-none}"
-          summary=$(grep '^market_map:' "data/logs/market_${month}.txt" 2>/dev/null || true)
-          if [ "${{ steps.map.outcome }}" = "success" ]; then
-            python -m radar.notify --title "Radar: monthly market map" \
-              --click "https://github.com/${DATA_REPO}/blob/main/market/${month}.md" \
-              "${summary:-market map written}"
-          else
-            python -m radar.notify --title "Radar: monthly market map needs a look" --priority high --tags warning \
-              --click "https://github.com/${DATA_REPO}/blob/main/market/${month}.md" \
-              "${summary:-market map failed, see logs/ in the data repo}"
+          kind=monthly
+          if [ "${{ steps.map.outcome }}" != "success" ]; then kind=monthly-failed; fi
+          click="https://github.com/${DATA_REPO}/blob/main/market/${month}.md"
+          if [ "$kind" = "monthly-failed" ] || [ ! -f "data/market/${month}.md" ]; then
+            click="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           fi
+          python -m radar.notify "$kind" --map-log "data/logs/market_${month}.txt" --month "$month" --click "$click"
 
       - name: Fail the job if the map failed
         if: steps.map.outcome == 'failure'

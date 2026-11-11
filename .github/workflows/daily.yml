@@ -1,8 +1,12 @@
 name: daily
 
 on:
+  # GitHub's scheduler is best effort and skipped the 05:17 run on 2026-11-11, so no morning push came.
+  # The 07:47 run is a backup: it does nothing when today's check already succeeded (the gate job).
+  # Not 06:47: that is the Sunday digest, and two runs waiting on the radar-db group would cancel one.
   schedule:
     - cron: "17 5 * * *"
+    - cron: "47 7 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -11,9 +15,33 @@ concurrency:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      skip: ${{ steps.gate.outputs.skip }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - id: gate
+        shell: bash
+        run: |
+          ok=$(gh run list --workflow daily.yml --status success --created ">=$(date -u +%F)" --json databaseId --jq length)
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "${ok:-0}" -gt 0 ]; then
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+            echo "today's check already succeeded: the backup run does nothing"
+          fi
+          # GitHub turns schedules off after 60 days without a commit here (commits go to the data repo).
+          # Enabling them again every day resets that clock.
+          for w in daily.yml weekly.yml monthly.yml; do gh workflow enable "$w" || true; done
+
   collect:
+    needs: gate
+    if: needs.gate.outputs.skip != '1'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
@@ -83,7 +111,7 @@ jobs:
         run: |
           run_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           if [ "${{ steps.collect.outcome }}" != "success" ]; then
-            python -m radar.notify --title "Radar: daily run FAILED" --priority high --tags warning               --click "$run_url" "The Steam collection failed this morning. Tap for the log."
+            python -m radar.notify daily-failed --click "$run_url"
             exit 0
           fi
           python -m radar.notify daily --collect-log collect.log --preview-log preview.log             --signals-dir "$RUNNER_TEMP/preview" --click "$run_url"
