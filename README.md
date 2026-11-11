@@ -21,8 +21,8 @@ Deliberately NOT used:
    domain works, e.g. the repo URL).
 2. Twitch app: https://dev.twitch.tv/console/apps (2FA required; category "Application Integration");
    note the client ID and secret.
-3. Anthropic API key: https://platform.claude.com. Buy $20 prepaid credit, keep auto-reload OFF, and set a
-   $20 monthly spend limit in the Console.
+3. Anthropic API key: https://platform.claude.com. Use prepaid credit with auto-reload OFF and set the Console
+   monthly spend limit to at least $60 (the code's own cap is $50; the account's credits are $200 a month).
 4. Two GitHub repos. This code runs from a **public** repo, because GitHub Actions minutes are free and
    unlimited there and a private repo's 2,000 a month do not cover a daily 50-minute collection. Your
    brief, digests and ledger live in a separate **private data repo** (`BRIEF.md`, `digests/`,
@@ -50,10 +50,19 @@ Deliberately NOT used:
   Manual run: Actions -> weekly -> Run workflow. Tick `no_llm` to skip every Anthropic call: the digest then
   only lists the signals, unvetted, and spends nothing.
 
+## The weekly funnel
+For each cluster (up to 20, best score first): **player voice** (Sonnet summarises the newest English reviews of its
+two strongest candidates: loves, complaints, wishes; quotes are checked verbatim in code) -> **Scout** (Sonnet, one
+concept card; every number checked against the signal data) -> **Skeptic A** (Opus) on up to 15 cards; its kill is
+final. For A's survivors only: **web research** (Sonnet with web search and fetch: why the games grow, whether a
+publisher is behind them, whether the twist already exists; a finding counts only with a page that was really
+fetched) -> **Skeptic B** (Opus, independent: it never sees A's verdict, it does see the research; its claims may
+cite a fetched page if the number is on it). A concept is kept only if B keeps it.
+
 ## Reading the digest and ledger
-- `digests/<date>.md`: at most 3 concepts that survived the Skeptic, each with its inspirations table,
-  numbers that each link to the store page they came from, the prototype plan and the scope estimate
-  against the hours in `BRIEF.md`. Then "Killed this week" with the failing check, and "Notes" (data limits,
+- `digests/<date>.md`: at most 3 concepts that survived both Skeptics, each with its inspirations table,
+  a Research list of findings with links, numbers that each link to the page they came from, the prototype plan and the scope estimate
+  against the hours in `BRIEF.md`. Then "Killed this week" with the failing check and which Skeptic killed it, and "Notes" (data limits,
   clusters skipped, removed claims, errors). Zero concepts is a normal week; nothing is padded.
 - A banner at the top means an LLM stage stopped (out of credit, spend cap, API error); the remaining
   signals are listed unvetted and the weekly job is marked failed.
@@ -65,13 +74,14 @@ Deliberately NOT used:
 
 ## Cost guards
 - Prepaid Anthropic credit with auto-reload off: a hard ceiling.
-- Console monthly spend limit ($20).
-- The code's own caps in `radar/config.py`: $16 per month (about EUR 15) and $4 per run. Before every call the
-  worst case (input estimate plus the full output limit) is added to the `spend` table's total; if it would
-  pass a cap the call is not made. After each call the real cost is written to `spend`.
+- Console monthly spend limit: set it to at least $60, above the code's cap so the code stops first.
+- The code's own caps in `radar/config.py`: $50 per month and $12 per run. Before every call the
+  worst case (input estimate plus the full output limit; for a research call a 200k-token input and every web
+  search at $0.01) is added to the `spend` table's total; if it would
+  pass a cap the call is not made. After each call the real cost (tokens plus web searches) is written to `spend`.
 - GitHub Actions spending limit of $0.
 
-Expected total: EUR 3-7 per month.
+Target: under $50 a month, all LLM stages included.
 
 ## What the first digests cannot know yet
 Player-count history (`ccu`) starts with the first daily run, so a trend needs 2-3 weeks of daily data; until
