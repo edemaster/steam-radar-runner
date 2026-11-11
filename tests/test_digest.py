@@ -311,6 +311,15 @@ class DigestTests(unittest.TestCase):
         self.assertIn("No player voice for 'Game 100'", text)
         self.assertEqual([r["verdict"] for r in self.ledger_rows()], ["kill"])
 
+    def test_scout_gets_the_brief_and_hour_budget(self):
+        """Without the BRIEF the Scout planned full days; 10 of 11 live cards died on the hour budget."""
+        self.signals([A])
+        self.run_digest(self.scout_ok, lambda kw: Msg(verdict("kill")))
+        scout_user = [c for c in self.client.calls if c["system"].startswith("You are a game concept scout")][0]
+        content = scout_user["messages"][0]["content"]
+        self.assertIn("Hour budget: time:", content)
+        self.assertIn("BRIEF.md:", content)
+
     def test_voice_reaches_the_scout(self):
         self.signals([A])
         rows = [{"review": f"Great game number {i}, wish for more maps", "voted_up": True,

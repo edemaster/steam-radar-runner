@@ -77,8 +77,14 @@ Rules:
 - Give 3 to 6 claims, each a fact from the document that supports why this concept is wanted.
 - Candidate members may carry player_voice: what that game's players love, complain about and wish for, from
   recent reviews. Build the twist on a real complaint or wish where you can, and name it in the pitch.
-- Be realistic about scope for one person: say what art, content and systems it needs.
-- prototype_plan has one short string per step; it must fit a prototype of a couple of weeks."""
+- You also get the developer BRIEF and its hour budget (hours available times the maximum prototype weeks;
+  read loose answers sensibly, e.g. "1 a day" is 7 hours a week). The prototype is the smallest playable test
+  of the twist, built in that many HOURS, not days: one mechanic, one level or loop, bought asset packs,
+  placeholder everything else. Leave out menus, saves, progression, extra content and polish.
+- Single-player unless the BRIEF shows networking experience; if the cluster's hook is multiplayer, find a
+  single-player or local twist on it.
+- prototype_plan has one short string per step, each starting with its hour estimate ("2 h: ..."), and the
+  hours add up to no more than the budget. The full game can be bigger; say so in the pitch, not the plan."""
 
 SKEPTIC_SYSTEM = """You are the Skeptic. Your job is to kill this game concept card. Keep it only if it survives every check.
 You get the card, the signal cluster JSON it came from, and the developer BRIEF.
@@ -171,9 +177,15 @@ def brief_budget(brief: str) -> str:
 
 # ---------------------------------------------------------------- LLM stages
 
-def scout(llm: Llm, cluster: dict[str, Any], titles: list[str]) -> tuple[dict[str, Any] | None, list[str]]:
-    """One card for a cluster; one retry if its claims fail. Returns (card or None, last errors)."""
+def scout(llm: Llm, cluster: dict[str, Any], titles: list[str], brief: str = "") -> tuple[dict[str, Any] | None, list[str]]:
+    """One card for a cluster; one retry if its claims fail. Returns (card or None, last errors).
+
+    WHY the BRIEF: without it the Scout planned 14 full days and the Skeptic killed 10 of 11 cards on the
+    14-hour budget (live run 2026-11-11).
+    """
     user = json.dumps({"cluster": cluster, "already_judged_titles": titles}, ensure_ascii=False)
+    if brief:
+        user += f"\n\nHour budget: {brief_budget(brief)}\n\nBRIEF.md:\n{brief}"
     card = llm.call_json(config.SCOUT_MODEL, config.SCOUT_EFFORT, config.SCOUT_MAX_TOKENS, SCOUT_SYSTEM, user,
                          SCOUT_SCHEMA, "scout")
     errors = claims_mod.check(card.get("claims"), cluster)
@@ -288,7 +300,7 @@ def vet(llm: Llm, ledger: Ledger, clusters: list[dict[str, Any]], brief: str, we
             if client is not None:
                 add_voices(llm, client, c, v.notes)
             try:
-                card, errors = scout(llm, c, titles)
+                card, errors = scout(llm, c, titles, brief)
             except LlmRefusal:
                 ledger.add(week, c, None, "refused", "the Scout refused")
                 v.notes.append(f"Scout refused cluster {c['fingerprint']}; skipped.")
