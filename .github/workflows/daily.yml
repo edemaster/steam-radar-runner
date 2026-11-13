@@ -1,30 +1,28 @@
 name: daily
 
 on:
-  # GitHub's scheduler runs this repo's crons 5 to 8.5 hours late (05:17 fired at 13:49 on 2026-11-12), so
-  # the morning run is started on time from outside: an external timer calls the dispatch API with
-  # source=timer. The two crons stay as a fallback for a day the timer misses; the gate job makes every
-  # run after today's first success do nothing. 07:47, not 06:47: that is the Sunday digest, and two
-  # runs waiting on the radar-db group would cancel one.
+  # GitHub starts this repo's timed runs 5 to 8.5 hours late (05:17 started at 13:49 on 2026-11-12), so the
+  # crons sit in the evening and night (UTC): late, they start around breakfast in Paris; on time, the
+  # morning push simply arrives at night. Only the first run of a UTC day collects (the gate job), so a
+  # 22:17 run that starts on time does nothing (yesterday is done) and the day's check comes from the next.
   schedule:
+    - cron: "17 22 * * *"
+    - cron: "17 1 * * *"
     - cron: "17 5 * * *"
-    - cron: "47 7 * * *"
   workflow_dispatch:
     inputs:
       source:
-        description: "Who started it: hand (you) or timer (the external morning timer)"
+        description: "Who started it: hand (you) or timer (an external timer, gated like the crons)"
         type: string
         default: hand
-
-concurrency:
-  group: radar-db
-  cancel-in-progress: false
 
 permissions:
   contents: write
   actions: write
 
 jobs:
+  # No concurrency group here: a run that only finds today done must never take the radar-db queue's one
+  # waiting place, where it would cancel a waiting Sunday digest.
   gate:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -37,11 +35,13 @@ jobs:
       - id: gate
         shell: bash
         run: |
-          ok=$(gh run list --workflow daily.yml --status success --created ">=$(date -u +%F)" --json databaseId --jq length)
+          # An earlier daily run today that succeeded or is still going owns today's check. Earlier = a lower
+          # run id, so two runs starting together never both skip and never both collect.
+          n=$(gh run list --workflow daily.yml --created ">=$(date -u +%F)" --limit 50                 --json databaseId,status,conclusion                 --jq "[.[] | select(.databaseId < ${GITHUB_RUN_ID}) | select(.conclusion == \"success\" or .status != \"completed\")] | length")
           if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ inputs.source }}" = "timer" ]; then
-            if [ "${ok:-0}" -gt 0 ]; then
+            if [ "${n:-0}" -gt 0 ]; then
               echo "skip=1" >> "$GITHUB_OUTPUT"
-              echo "today's check already succeeded: this run does nothing"
+              echo "today's check already ran or is running: this run does nothing"
             fi
           fi
           # GitHub turns schedules off after 60 days without a commit here (commits go to the data repo).
@@ -51,6 +51,9 @@ jobs:
   collect:
     needs: gate
     if: needs.gate.outputs.skip != '1'
+    concurrency:
+      group: radar-db
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:

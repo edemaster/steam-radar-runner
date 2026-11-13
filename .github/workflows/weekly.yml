@@ -1,8 +1,9 @@
 name: weekly
 
 on:
+  # 01:47 UTC Sunday: GitHub starts timed runs here 5 to 8.5 hours late, so this lands Sunday morning.
   schedule:
-    - cron: "47 6 * * 0"
+    - cron: "47 1 * * 0"
   workflow_dispatch:
     inputs:
       no_llm:
