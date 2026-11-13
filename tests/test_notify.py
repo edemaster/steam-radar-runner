@@ -119,6 +119,8 @@ class MessageTests(unittest.TestCase):
         self.assertTrue(p.title.endswith("(manual run)"))
         self.assertTrue(p.body.startswith("Started by hand, not by the schedule."))
         self.assertNotIn("manual", notify.daily_failed().title)
+        with mock.patch.dict(os.environ, {"GITHUB_EVENT_NAME": "workflow_dispatch", "RADAR_SOURCE": "timer"}):
+            self.assertNotIn("manual", notify.daily_failed().title)
 
     def test_cli_sends_the_push(self):
         seen = {}

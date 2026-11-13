@@ -1,13 +1,20 @@
 name: daily
 
 on:
-  # GitHub's scheduler is best effort and skipped the 05:17 run on 2026-11-11, so no morning push came.
-  # The 07:47 run is a backup: it does nothing when today's check already succeeded (the gate job).
-  # Not 06:47: that is the Sunday digest, and two runs waiting on the radar-db group would cancel one.
+  # GitHub's scheduler runs this repo's crons 5 to 8.5 hours late (05:17 fired at 13:49 on 2026-11-12), so
+  # the morning run is started on time from outside: an external timer calls the dispatch API with
+  # source=timer. The two crons stay as a fallback for a day the timer misses; the gate job makes every
+  # run after today's first success do nothing. 07:47, not 06:47: that is the Sunday digest, and two
+  # runs waiting on the radar-db group would cancel one.
   schedule:
     - cron: "17 5 * * *"
     - cron: "47 7 * * *"
   workflow_dispatch:
+    inputs:
+      source:
+        description: "Who started it: hand (you) or timer (the external morning timer)"
+        type: string
+        default: hand
 
 concurrency:
   group: radar-db
@@ -31,9 +38,11 @@ jobs:
         shell: bash
         run: |
           ok=$(gh run list --workflow daily.yml --status success --created ">=$(date -u +%F)" --json databaseId --jq length)
-          if [ "${{ github.event_name }}" = "schedule" ] && [ "${ok:-0}" -gt 0 ]; then
-            echo "skip=1" >> "$GITHUB_OUTPUT"
-            echo "today's check already succeeded: the backup run does nothing"
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ inputs.source }}" = "timer" ]; then
+            if [ "${ok:-0}" -gt 0 ]; then
+              echo "skip=1" >> "$GITHUB_OUTPUT"
+              echo "today's check already succeeded: this run does nothing"
+            fi
           fi
           # GitHub turns schedules off after 60 days without a commit here (commits go to the data repo).
           # Enabling them again every day resets that clock.
@@ -51,6 +60,7 @@ jobs:
       TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
       TWITCH_CLIENT_SECRET: ${{ secrets.TWITCH_CLIENT_SECRET }}
       NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+      RADAR_SOURCE: ${{ inputs.source }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

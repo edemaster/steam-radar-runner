@@ -73,7 +73,9 @@ def _read(path: str | None) -> str:
 
 
 def manual() -> bool:
-    return os.environ.get("GITHUB_EVENT_NAME", "") == "workflow_dispatch"
+    # The external morning timer also dispatches, with source=timer: that is the schedule, not a hand run.
+    return (os.environ.get("GITHUB_EVENT_NAME", "") == "workflow_dispatch"
+            and os.environ.get("RADAR_SOURCE", "") != "timer")
 
 
 def _label(push: Push) -> Push:
