@@ -37,6 +37,12 @@ class SeriesTests(unittest.TestCase):
         self.assertIsNone(series.value_at(s, D("2026-10-31")))
         self.assertEqual(series.value_at(s, D("2026-11-01")), s[0])
 
+    def test_removed_reviews_never_count_negative(self):
+        # Tiny Bakery, 2026-11-14: 100 reviews, then 99 after Steam removed one.
+        s = [(D("2026-11-07"), 100, 90), (D("2026-11-14"), 99, 89)]
+        self.assertEqual(series.window(s, D("2026-11-14"), 7), 0)
+        self.assertEqual(series.reviews_between(s, D("2026-11-07"), D("2026-11-14")), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

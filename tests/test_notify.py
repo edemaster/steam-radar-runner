@@ -96,6 +96,12 @@ class MessageTests(unittest.TestCase):
         self.assertIn("No game matches", every_push()[1].body)
         self.assertIn("2 Steam request(s) failed", every_push()[2].body)
         self.assertEqual(every_push()[3].priority, "high")
+        # 2026-11-14: the match check crashed (a Traceback, no "signals:" line) and the push said "OK".
+        crashed = notify.daily_message("new_apps=1 meta=0 daily=3 steam_calls=4 errors=0",
+                                       "Traceback (most recent call last):\nValueError: math domain error\n", None)
+        self.assertEqual(crashed.title, "Steam radar: Daily check saved, match check FAILED")
+        self.assertEqual(crashed.priority, "high")
+        self.assertIn("Sunday's digest runs the same check", crashed.body)
 
     def test_weekly_message(self):
         kept, none, empty, cut, crash = every_push()[5:10]

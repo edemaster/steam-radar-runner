@@ -37,12 +37,14 @@ def reviews_between(series: list[Point], d0: date, d1: date) -> int | None:
 
     A series that starts after d0 counts as 0 at d0 (nothing existed before the first point: backfill's
     first point is release+7, daily starts at tracking). None when no point <= d1 exists.
+    Never below 0: Steam removes reviews (spam purges, deleted accounts), so a total can fall by a few;
+    "gained" is then 0, not negative. A negative window crashed the 2026-11-15 digest in math.log10.
     """
     end = value_at(series, d1)
     if end is None:
         return None
     start = value_at(series, d0)
-    return end[1] - (start[1] if start else 0)
+    return max(0, end[1] - (start[1] if start else 0))
 
 
 def window(series: list[Point], day: date, days: int) -> int | None:

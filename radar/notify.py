@@ -109,6 +109,13 @@ def daily_message(collect_log: str, preview_log: str, signals_dir: str | None) -
                        + (": " + ", ".join(names[:3]) if names else "") + ".")
         else:
             out.append(f"No game matches what the radar looks for today ({PATTERN}); that is normal.")
+    else:
+        # The match check is the same detection Sunday's digest runs: when it crashes here, Sunday will too.
+        # On 2026-11-14 it crashed and this push said nothing, so the digest's crash was the first sign.
+        out[0] = f"Today it saved Steam numbers for {daily:,} games and found {new:,} newly listed ones."
+        out.append("But the check for matching games crashed, and Sunday's digest runs the same check, so it "
+                   "will fail too. Ask Claude to look. Tap for the log.")
+        return _label(Push("Steam radar: Daily check saved, match check FAILED", " ".join(out), "high", "warning"))
     out.append("Sunday's digest turns matches into game ideas for you.")
     return _label(Push("Steam radar: Daily check OK", " ".join(out), "low", "white_check_mark"))
 
