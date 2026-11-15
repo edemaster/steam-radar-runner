@@ -4,6 +4,7 @@ import os
 import sqlite3
 import tempfile
 import unittest
+from unittest import mock
 from datetime import date, timedelta
 
 from radar import collect, config, db, detect, steam
@@ -107,6 +108,22 @@ class DetectTests(unittest.TestCase):
         self.assertEqual(g[920].fails, ["publisher"])
         self.assertEqual(g[921].fails, [])
         self.assertEqual(g[922].fails, [])
+
+    def test_multiplayer_games_are_no_evidence(self):
+        # 2026-11-15: Nomad Drive ("Multiplayer" its 3rd tag, 1-4 player co-op) became a single-player idea.
+        self.con.executemany("INSERT INTO tags VALUES(?,?)", [(30, "Multiplayer"), (31, "Online Co-Op")])
+        put(self.con, 940, tags=OTHER + [(30, 85)])  # 3rd tag, like Nomad Drive
+        put(self.con, 941, tags=COMMON + OTHER + [(31, 70)])  # 7th tag: co-op is an extra
+        put(self.con, 942, age=200, tags=[(31, 100)] + OTHER, pts={0: (3000, 2800)})  # co-op old hit
+        g = self.games()
+        self.assertEqual(g[940].fails, ["multiplayer"])
+        self.assertEqual(g[941].fails, [])
+        self.assertEqual((g[942].role, g[942].fails), ("old_hit", ["multiplayer"]))
+        rep = {}
+        detect.detect(self.con, WEEK, report=rep)
+        self.assertIn(940, [m["appid"] for m in rep["nearest_misses"]["candidate:multiplayer"]])
+        with mock.patch.object(config, "SKIP_MULTIPLAYER", False):
+            self.assertEqual(self.games()[940].fails, [])
 
     def test_ccu_trend_needs_ten_points(self):
         for i in range(9):

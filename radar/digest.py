@@ -81,8 +81,8 @@ Rules:
   read loose answers sensibly, e.g. "1 a day" is 7 hours a week). The prototype is the smallest playable test
   of the twist, built in that many HOURS, not days: one mechanic, one level or loop, bought asset packs,
   placeholder everything else. Leave out menus, saves, progression, extra content and polish.
-- Single-player unless the BRIEF shows networking experience; if the cluster's hook is multiplayer, find a
-  single-player or local twist on it.
+- Single-player unless the BRIEF shows networking experience. Games that sell on multiplayer are filtered out
+  before you see them; if a member still leans on co-op, build only on what its solo players praise.
 - prototype_plan has one short string per step, each starting with its hour estimate ("2 h: ..."), and the
   hours add up to no more than the budget. The full game can be bigger; say so in the pitch, not the plan."""
 

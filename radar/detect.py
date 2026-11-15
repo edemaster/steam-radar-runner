@@ -52,6 +52,12 @@ def tiny_failures(a: sqlite3.Row) -> list[str]:
     return bad
 
 
+def multiplayer(top_tags: list[str]) -> bool:
+    """True when one of the game's top tags (heaviest first) says it is played together (config.py says why)."""
+    return config.SKIP_MULTIPLAYER and any(t in config.MULTIPLAYER_TAGS
+                                           for t in top_tags[:config.MULTIPLAYER_TAG_TOP])
+
+
 class Game:
     """One evaluated game: its row, review series, role (by age) and the rules it failed.
 
@@ -59,7 +65,8 @@ class Game:
     of exactly 90 days is a candidate and never both.
     """
 
-    def __init__(self, row: sqlite3.Row, week: date, pts: list[series.Point]) -> None:
+    def __init__(self, row: sqlite3.Row, week: date, pts: list[series.Point],
+                 top_tags: list[str] | None = None) -> None:
         self.row = row
         self.appid: int = row["appid"]
         self.release = date.fromisoformat(row["release_date"])
@@ -74,6 +81,8 @@ class Game:
         self.role = "old_hit" if self.age > config.CAND_MAX_DAYS else "candidate"
         self.devs: frozenset[str] = frozenset(json.loads(row["developers"] or "[]"))
         self.fails: list[str] = tiny_failures(row)
+        if multiplayer(top_tags or []):
+            self.fails.append("multiplayer")
         self._evaluate(week)
 
     def _evaluate(self, week: date) -> None:
@@ -332,7 +341,14 @@ def load_games(con: sqlite3.Connection, week: date) -> list[Game]:
     hi = (week - timedelta(days=1)).isoformat()
     rows = con.execute("""SELECT * FROM apps WHERE type='game' AND coming_soon=0
                           AND release_date BETWEEN ? AND ? ORDER BY appid""", (lo, hi)).fetchall()
-    return [Game(r, week, series.cumulative(con, r["appid"])) for r in rows]
+    return [Game(r, week, series.cumulative(con, r["appid"]), top_tags(con, r["appid"])) for r in rows]
+
+
+def top_tags(con: sqlite3.Connection, appid: int) -> list[str]:
+    """Tag names heaviest first, in the order the signal JSON shows them."""
+    return [x[0] for x in con.execute(
+        """SELECT t.name FROM app_tags a JOIN tags t ON t.tagid=a.tagid WHERE a.appid=?
+           ORDER BY a.weight DESC, a.tagid LIMIT ?""", (appid, config.MULTIPLAYER_TAG_TOP))]
 
 
 def store_sample(con: sqlite3.Connection, appid: int, day: date, s: dict[str, Any]) -> None:

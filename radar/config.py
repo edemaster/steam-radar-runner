@@ -77,6 +77,18 @@ CAND_YOUNG_MIN_AGE = 7  # 7..13 days: only first-week reviews count
 CAND_YOUNG_FIRST_WEEK = 200
 CCU_MIN_POINTS = 10
 
+# A game whose top tags say multiplayer sells on playing together, so it is no evidence for a single-player
+# game: on 2026-11-15 the Scout turned Nomad Drive (1-4 player co-op, "Multiplayer" its 3rd tag) into a
+# single-player RV idea that research called weak. The BRIEF shows no networking experience, so such games
+# fail the "multiplayer" rule (candidates and old hits alike) before any API money is spent on them.
+# Measured 2026-11-15: 10 of 50 candidates have one of these in their top 5 tags; Birb (13th) and Cinderwake
+# (7th) keep co-op as an extra and stay in. Set SKIP_MULTIPLAYER = False once the BRIEF shows networking skill.
+SKIP_MULTIPLAYER = True
+MULTIPLAYER_TAG_TOP = 5
+MULTIPLAYER_TAGS = frozenset({
+    "Multiplayer", "Online Co-Op", "Co-op", "Local Co-Op", "Co-op Campaign", "PvP", "Online PvP", "Local PvP",
+    "Local Multiplayer", "Massively Multiplayer", "4 Player Local", "Split Screen", "Team-Based", "MMORPG"})
+
 TAG_TOP_VECTOR = 20
 UNUSUAL_TOP_TAGS = 6
 UNUSUAL_PAIR_MAX_SHARE = 0.01
